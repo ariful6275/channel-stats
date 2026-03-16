@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VerityVista — Channel Stats</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; padding: 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+  .channel-card { background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px; border: 1px solid #e8e8e8; }
+  .channel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .channel-avatar { width: 52px; height: 52px; border-radius: 50%; background: #e0e0e0; object-fit: cover; }
+  .channel-name { font-size: 17px; font-weight: 600; }
+  .channel-handle { font-size: 13px; color: #888; margin-top: 2px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat-box { background: #f8f8f8; border-radius: 12px; padding: 12px; text-align: center; }
+  .stat-value { font-size: 20px; font-weight: 700; color: #1a1a1a; }
+  .stat-label { font-size: 11px; color: #888; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .section-title { font-size: 15px; font-weight: 600; margin: 20px 0 12px; color: #333; }
+  .video-card { background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 10px; border: 1px solid #e8e8e8; }
+  .video-title { font-size: 14px; font-weight: 600; line-height: 1.4; margin-bottom: 10px; color: #1a1a1a; }
+  .video-stats { display: flex; gap: 14px; }
+  .video-stat { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #555; }
+  .video-stat svg { width: 14px; height: 14px; fill: #888; }
+  .video-date { font-size: 12px; color: #aaa; margin-top: 8px; }
+  .badge { display: inline-block; background: #f0f0f0; color: #555; font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-bottom: 8px; }
+  .loading { text-align: center; padding: 40px; color: #888; font-size: 15px; }
+  .error { background: #fff0f0; border: 1px solid #ffcccc; border-radius: 12px; padding: 16px; color: #c00; font-size: 14px; margin-bottom: 16px; }
+  .refresh-btn { display: block; width: 100%; background: #1a1a1a; color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+  .refresh-btn:active { opacity: 0.8; }
+  .last-updated { text-align: center; font-size: 12px; color: #aaa; margin-top: 16px; }
+  .rank { display: inline-block; width: 22px; height: 22px; background: #1a1a1a; color: #fff; border-radius: 50%; font-size: 11px; font-weight: 700; text-align: center; line-height: 22px; margin-right: 8px; flex-shrink: 0; }
+  .video-title-row { display: flex; align-items: flex-start; }
+</style>
+</head>
+<body>
+
+<h1>Channel Stats</h1>
+<p class="subtitle">Live data from YouTube</p>
+
+<div id="app"><div class="loading">Loading your stats...</div></div>
+
+<script>
+const API_KEY = 'PASTE_YOUR_API_KEY_HERE';
+
+const CHANNELS = [
+  { handle: 'TheVerityVista', id: 'UCVpojOGtj-Rf3fjVUIRaQg', name: 'VerityVista' },
+  { handle: 'MastermindArchive', id: 'UCxzaokj3JVOHqgH1rVYtlIg', name: 'Mastermind Archive' },
+  { handle: 'TheMoneyArchiveYT', id: 'UC-IkYEpP_HMc7rNjHmH36Bw', name: 'The Money Archive' }
+];
+
+function fmt(n) {
+  const num = parseInt(n || 0);
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toLocaleString();
+}
+
+function timeAgo(dateStr) {
+  const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('API error ' + res.status);
+  return res.json();
+}
+
+async function loadChannel(ch) {
+  const chanData = await fetchJSON(
+    `https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id=${ch.id}&key=${API_KEY}`
+  );
+  const info = chanData.items[0];
+  const stats = info.statistics;
+  const snippet = info.snippet;
+
+  const playlistId = 'UU' + ch.id.slice(2);
+  const videosData = await fetchJSON(
+    `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=5&key=${API_KEY}`
+  );
+
+  const videoIds = videosData.items.map(v => v.snippet.resourceId.videoId).join(',');
+  const videoStats = await fetchJSON(
+    `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds}&key=${API_KEY}`
+  );
+
+  const avatar = snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || '';
+
+  let html = `
+    <div class="channel-card">
+      <div class="channel-header">
+        <img class="channel-avatar" src="${avatar}" alt="${snippet.title}" onerror="this.style.background='#ddd'">
+        <div>
+          <div class="channel-name">${snippet.title}</div>
+          <div class="channel-handle">@${snippet.customUrl?.replace('@','') || ch.handle}</div>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-value">${fmt(stats.subscriberCount)}</div>
+          <div class="stat-label">Subscribers</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${fmt(stats.viewCount)}</div>
+          <div class="stat-label">Total Views</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${fmt(stats.videoCount)}</div>
+          <div class="stat-label">Videos</div>
+        </div>
+      </div>
+    </div>
+    <div class="section-title">Last 5 Videos</div>
+  `;
+
+  videoStats.items.forEach((v, i) => {
+    const vs = v.statistics;
+    const title = v.snippet.title;
+    const published = v.snippet.publishedAt;
+    html += `
+      <div class="video-card">
+        <div class="video-title-row">
+          <span class="rank">${i + 1}</span>
+          <div class="video-title">${title}</div>
+        </div>
+        <div class="video-stats">
+          <div class="video-stat">
+            <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            ${fmt(vs.viewCount)}
+          </div>
+          <div class="video-stat">
+            <svg viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+            ${fmt(vs.likeCount)}
+          </div>
+          <div class="video-stat">
+            <svg viewBox="0 0 24 24"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"/></svg>
+            ${fmt(vs.commentCount)}
+          </div>
+        </div>
+        <div class="video-date">${timeAgo(published)}</div>
+      </div>
+    `;
+  });
+
+  return html;
+}
+
+async function loadAll() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">Fetching live data...</div>';
+
+  try {
+    let html = '';
+    for (const ch of CHANNELS) {
+      html += await loadChannel(ch);
+    }
+    html += `<button class="refresh-btn" onclick="loadAll()">Refresh Stats</button>`;
+    html += `<div class="last-updated">Last updated: ${new Date().toLocaleTimeString()}</div>`;
+    app.innerHTML = html;
+  } catch (e) {
+    app.innerHTML = `
+      <div class="error">Error loading data: ${e.message}<br><br>Check your API key is correct.</div>
+      <button class="refresh-btn" onclick="loadAll()">Try Again</button>
+    `;
+  }
+}
+
+loadAll();
+</script>
+</body>
+</html>
