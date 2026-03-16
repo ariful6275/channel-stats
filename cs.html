@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VerityVista — Channel Stats</title>
+<title>Channel Stats</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; padding: 16px; }
@@ -25,7 +25,6 @@
   .video-stat { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #555; }
   .video-stat svg { width: 14px; height: 14px; fill: #888; }
   .video-date { font-size: 12px; color: #aaa; margin-top: 8px; }
-  .badge { display: inline-block; background: #f0f0f0; color: #555; font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-bottom: 8px; }
   .loading { text-align: center; padding: 40px; color: #888; font-size: 15px; }
   .error { background: #fff0f0; border: 1px solid #ffcccc; border-radius: 12px; padding: 16px; color: #c00; font-size: 14px; margin-bottom: 16px; }
   .refresh-btn { display: block; width: 100%; background: #1a1a1a; color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px; }
@@ -46,9 +45,24 @@
 const API_KEY = 'AIzaSyCxxq-rrq5dHIvCkr7fGBm-9eshSxhEghk';
 
 const CHANNELS = [
-  { handle: 'TheVerityVista', id: 'UCVpojOGtj-Rf3fjVUIRaQg', name: 'VerityVista' },
-  { handle: 'MastermindArchive', id: 'UCxzaokj3JVOHqgH1rVYtlIg', name: 'Mastermind Archive' },
-  { handle: 'TheMoneyArchiveYT', id: 'UC-IkYEpP_HMc7rNjHmH36Bw', name: 'The Money Archive' }
+  {
+    handle: 'theverityvista',
+    id: 'UCVpojOGtj-Rf3fljVUiRaQg',
+    name: 'Verity Vista',
+    uploadsId: 'UUVpojOGtj-Rf3fljVUiRaQg'
+  },
+  {
+    handle: 'mastermindarchive',
+    id: 'UCxzaokj3JVOHqgH1rVYtlIg',
+    name: 'The Mastermind Archive',
+    uploadsId: 'UUxzaokj3JVOHqgH1rVYtlIg'
+  },
+  {
+    handle: 'themoneyarchiveyt',
+    id: 'UC-IkYEpP_HMc7rNjHmH36Bw',
+    name: 'The Money Archive',
+    uploadsId: 'UU-IkYEpP_HMc7rNjHmH36Bw'
+  }
 ];
 
 function fmt(n) {
@@ -68,7 +82,7 @@ function timeAgo(dateStr) {
 
 async function fetchJSON(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error('API error ' + res.status);
+  if (!res.ok) throw new Error('API error ' + res.status + ' for ' + url);
   return res.json();
 }
 
@@ -76,16 +90,27 @@ async function loadChannel(ch) {
   const chanData = await fetchJSON(
     `https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id=${ch.id}&key=${API_KEY}`
   );
+
+  if (!chanData.items || chanData.items.length === 0) {
+    throw new Error(`No data found for channel: ${ch.name}`);
+  }
+
   const info = chanData.items[0];
   const stats = info.statistics;
   const snippet = info.snippet;
 
-  const playlistId = 'UU' + ch.id.slice(2);
   const videosData = await fetchJSON(
-    `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=5&key=${API_KEY}`
+    `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${ch.uploadsId}&maxResults=5&key=${API_KEY}`
   );
 
-  const videoIds = videosData.items.map(v => v.snippet.resourceId.videoId).join(',');
+  if (!videosData.items || videosData.items.length === 0) {
+    throw new Error(`No videos found for channel: ${ch.name}`);
+  }
+
+  const videoIds = videosData.items
+    .map(v => v.snippet.resourceId.videoId)
+    .join(',');
+
   const videoStats = await fetchJSON(
     `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds}&key=${API_KEY}`
   );
@@ -98,7 +123,7 @@ async function loadChannel(ch) {
         <img class="channel-avatar" src="${avatar}" alt="${snippet.title}" onerror="this.style.background='#ddd'">
         <div>
           <div class="channel-name">${snippet.title}</div>
-          <div class="channel-handle">@${snippet.customUrl?.replace('@','') || ch.handle}</div>
+          <div class="channel-handle">@${ch.handle}</div>
         </div>
       </div>
       <div class="stats-grid">
@@ -165,7 +190,7 @@ async function loadAll() {
     app.innerHTML = html;
   } catch (e) {
     app.innerHTML = `
-      <div class="error">Error loading data: ${e.message}<br><br>Check your API key is correct.</div>
+      <div class="error">Error: ${e.message}<br><br>Check your API key is correct.</div>
       <button class="refresh-btn" onclick="loadAll()">Try Again</button>
     `;
   }
